@@ -21,6 +21,8 @@ import com.bgmigyrolab.app.gyro.DelayGrade
 fun HomeScreen(
     hasGyro: Boolean,
     lastGrade: DelayGrade?,
+    boostOn: Boolean,
+    onToggleBoost: () -> Unit,
     onOpenDelay: () -> Unit,
     onOpenCalibrate: () -> Unit,
     onOpenTrainer: () -> Unit,
@@ -54,6 +56,18 @@ fun HomeScreen(
                 Text(
                     "Last delay grade: ${lastGrade.name}",
                     color = MaterialTheme.colorScheme.secondary,
+                )
+            }
+        }
+        if (hasGyro) {
+            item {
+                ActionCard(
+                    title = if (boostOn) "Gyro boost: ON" else "Gyro boost",
+                    body = "Holds the gyro at its max rate with batching off, in the background, until you stop it. " +
+                        "Start it, then open BGMI. Helps on phones where BGMI asks for a slower rate; " +
+                        "can't beat the chip's own limit. Uses a little extra battery.",
+                    action = if (boostOn) "Stop boost" else "Start boost",
+                    onClick = onToggleBoost,
                 )
             }
         }
