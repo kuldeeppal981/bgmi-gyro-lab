@@ -15,6 +15,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import com.bgmigyrolab.app.BuildConfig
 import com.bgmigyrolab.app.gyro.DelayGrade
 
 @Composable
@@ -37,7 +38,10 @@ fun HomeScreen(
         verticalArrangement = Arrangement.spacedBy(14.dp),
     ) {
         item {
-            Text("BGMI Gyro Lab", style = MaterialTheme.typography.headlineMedium)
+            Column {
+                Text("BGMI Gyro Lab", style = MaterialTheme.typography.headlineMedium)
+                Text("Build ${BuildConfig.VERSION_NAME}", style = MaterialTheme.typography.bodySmall)
+            }
         }
         item {
             Text(

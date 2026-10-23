@@ -155,7 +155,7 @@ private fun reportText(state: UiState, report: DelayReport): String {
     fun f(v: Float, digits: Int = 1) = String.format(Locale.US, "%.${digits}f", v)
     val cal = state.calibration
     return buildString {
-        appendLine("BGMI Gyro Lab report")
+        appendLine("BGMI Gyro Lab report (build ${com.bgmigyrolab.app.BuildConfig.VERSION_NAME})")
         appendLine("Phone: ${Build.MANUFACTURER} ${Build.MODEL} (Android ${Build.VERSION.RELEASE}, API ${Build.VERSION.SDK_INT})")
         appendLine("Sensor: ${state.sensorInfo}")
         appendLine("Gyro boost: ${if (GyroBoostService.running.value) "on" else "off"}")

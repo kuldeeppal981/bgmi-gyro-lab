@@ -153,7 +153,7 @@ class SessionRecorder(
         fun mmss(t: Int) = String.format(Locale.US, "%02d:%02d", t / 60, t % 60)
 
         return buildString {
-            appendLine("BGMI Gyro Lab session report")
+            appendLine("BGMI Gyro Lab session report (build ${com.bgmigyrolab.app.BuildConfig.VERSION_NAME})")
             appendLine("Phone: ${Build.MANUFACTURER} ${Build.MODEL} (Android ${Build.VERSION.RELEASE})")
             appendLine("Sensor: $sensorInfo")
             appendLine("Started: $start   Duration: ${mmss(rows.size)}")
