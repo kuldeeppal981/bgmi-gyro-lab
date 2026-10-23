@@ -38,6 +38,8 @@ class SessionRecorder(
         val batteryTempC: Float?,
         val thermal: Int,
         val refreshHz: Float,
+        val charging: Boolean,
+        val headroom: Float?,
     )
 
     private val lock = Any()
@@ -79,7 +81,11 @@ class SessionRecorder(
 
     /** Close the current one-second bucket. Called every second on the boost thread. */
     fun tick() {
-        val temp = batteryTempC()
+        val battery: Intent? = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        val temp = battery?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, Int.MIN_VALUE)
+            ?.takeIf { it != Int.MIN_VALUE }?.let { it / 10f }
+        val charging = (battery?.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) ?: 0) != 0
+        val headroom = thermalHeadroom()
         val thermal = thermalStatus()
         val refresh = refreshHz()
         synchronized(lock) {
@@ -99,6 +105,8 @@ class SessionRecorder(
                     batteryTempC = temp,
                     thermal = thermal,
                     refreshHz = refresh,
+                    charging = charging,
+                    headroom = headroom,
                 ),
             )
             count = 0
@@ -167,10 +175,18 @@ class SessionRecorder(
                     "${f(temps.first())} °C → ${f(temps.last())} °C (max ${f(temps.max())} °C)",
             )
             appendLine("Thermal status: max ${thermalName(maxThermal)}" + (firstHot?.let { " (from ${mmss(it.t)})" } ?: ""))
+            val headrooms = s.mapNotNull { it.headroom }
+            if (headrooms.isNotEmpty()) {
+                appendLine("Thermal headroom: start ${f(headrooms.first(), 2)}, max ${f(headrooms.max(), 2)} (1.00 = throttling)")
+            }
+            appendLine("Charging: ${s.count { it.charging }}s of ${s.size}s")
             appendLine("Battery: $startBattery% → $endBattery%")
             appendLine("Aiming activity: moving >30°/s for ${active}s of ${s.size}s, peak ${f(s.maxOf { it.peakMotionDegPerSec }, 0)}°/s")
             appendLine()
             appendLine("== Findings ==")
+            if (s.any { it.charging }) {
+                appendLine("- You played while charging. Charging heats the phone and makes it throttle sooner (lower FPS, stutter).")
+            }
             findings(avgHz, medHz, avgGameHz, delMedian, delP95, delMax, s.firstOrNull { (it.deliveryMaxMs ?: 0f) > 200f }?.t, totalGaps, stutter.size, s.size, maxThermal, firstHot?.t, mainRefresh, temps)
                 .forEach { appendLine("- $it") }
             appendLine()
@@ -245,11 +261,13 @@ class SessionRecorder(
         else if (refresh > 61) add("Screen ran at $refresh Hz, good for low input lag.")
     }
 
-    private fun batteryTempC(): Float? {
-        val i: Intent? = context.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
-        val t = i?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, Int.MIN_VALUE) ?: Int.MIN_VALUE
-        return if (t == Int.MIN_VALUE) null else t / 10f
-    }
+    /** Forecast of how close the phone is to throttling: 1.0 = severe throttling. API 30+. */
+    private fun thermalHeadroom(): Float? =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            context.getSystemService(PowerManager::class.java)?.getThermalHeadroom(0)?.takeIf { !it.isNaN() }
+        } else {
+            null
+        }
 
     private fun batteryPercent(): Int {
         val bm = context.getSystemService(BatteryManager::class.java)
