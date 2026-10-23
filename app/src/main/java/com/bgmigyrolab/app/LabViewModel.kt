@@ -76,7 +76,8 @@ data class UiState(
     val yawHint: String = "Yaw: —",
     val pitchHint: String = "Pitch: —",
     val drill: Drill = Drill.HoldStill,
-    val sensitivity: Float = 420f,
+    /** Degrees of phone turn that sweep the crosshair across the full width. Lower = faster. */
+    val sensitivity: Float = 40f,
     val crosshairX: Float = 0.5f,
     val crosshairY: Float = 0.5f,
     val targetX: Float = 0.5f,
@@ -430,7 +431,7 @@ class LabViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun setSensitivity(value: Float) {
-        _state.update { it.copy(sensitivity = value.coerceIn(80f, 1200f)) }
+        _state.update { it.copy(sensitivity = value.coerceIn(SWEEP_MIN_DEG, SWEEP_MAX_DEG)) }
     }
 
     fun setCanvasSize(width: Float, height: Float) {
@@ -474,10 +475,13 @@ class LabViewModel(application: Application) : AndroidViewModel(application) {
         trainerJob = viewModelScope.launch {
             val start = SystemClock.elapsedRealtime()
             while (isActive && _state.value.trainerRunning) {
+                // Same pixels-per-degree on both axes, independent of screen resolution.
+                val sweepRad = Math.toRadians(_state.value.sensitivity.toDouble()).toFloat()
+                val aspect = canvasW / canvasH
+                integrator.clamp(EDGE * sweepRad, EDGE * sweepRad / aspect)
                 val (yawRad, pitchRad) = integrator.angles()
-                val sens = _state.value.sensitivity
-                var cx = (0.5f + yawRad * sens / canvasW).coerceIn(0.04f, 0.96f)
-                var cy = (0.5f + pitchRad * sens / canvasH).coerceIn(0.04f, 0.96f)
+                var cx = 0.5f + yawRad / sweepRad
+                var cy = 0.5f + pitchRad * aspect / sweepRad
                 var tx = _state.value.targetX
                 var ty = _state.value.targetY
                 val elapsed = SystemClock.elapsedRealtime() - start
@@ -525,7 +529,7 @@ class LabViewModel(application: Application) : AndroidViewModel(application) {
                                 it.copy(
                                     trainerRunning = false,
                                     trackErrorPx = avg,
-                                    trainerPrompt = "Average tracking error ${avg.toInt()} px. Raise sensitivity if you lag behind.",
+                                    trainerPrompt = "Average tracking error ${avg.toInt()} px. Lower the sweep slider if you lag behind.",
                                 )
                             }
                             return@launch
@@ -631,6 +635,9 @@ class LabViewModel(application: Application) : AndroidViewModel(application) {
         const val FLICK_SECONDS = 8
         const val CAL_SECONDS = 3
         const val PROBE_MS = 3500L
+        const val SWEEP_MIN_DEG = 15f
+        const val SWEEP_MAX_DEG = 90f
+        const val EDGE = 0.46f
         // ~2 °/s average noise and ~9 °/s peak: above this the hand moved, so the bias would be wrong.
         const val STILL_RESIDUAL_MAX = 0.035f
         const val STILL_PEAK_MAX = 0.16f

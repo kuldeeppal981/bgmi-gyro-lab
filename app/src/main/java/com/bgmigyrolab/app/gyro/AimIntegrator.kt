@@ -26,6 +26,14 @@ class AimIntegrator {
         }
     }
 
+    /** Stops angles at the screen edge so turning back moves the crosshair immediately (no windup). */
+    fun clamp(maxYawRad: Float, maxPitchRad: Float) {
+        synchronized(lock) {
+            yawRad = yawRad.coerceIn(-maxYawRad, maxYawRad)
+            pitchRad = pitchRad.coerceIn(-maxPitchRad, maxPitchRad)
+        }
+    }
+
     /** Current (yaw, pitch) in radians. */
     fun angles(): Pair<Float, Float> = synchronized(lock) { yawRad to pitchRad }
 
