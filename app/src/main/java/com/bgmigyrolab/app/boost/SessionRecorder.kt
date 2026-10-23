@@ -171,7 +171,7 @@ class SessionRecorder(
             appendLine("Aiming activity: moving >30°/s for ${active}s of ${s.size}s, peak ${f(s.maxOf { it.peakMotionDegPerSec }, 0)}°/s")
             appendLine()
             appendLine("== Findings ==")
-            findings(avgHz, medHz, avgGameHz, delMedian, delP95, totalGaps, stutter.size, s.size, maxThermal, firstHot?.t, mainRefresh, temps)
+            findings(avgHz, medHz, avgGameHz, delMedian, delP95, delMax, s.firstOrNull { (it.deliveryMaxMs ?: 0f) > 200f }?.t, totalGaps, stutter.size, s.size, maxThermal, firstHot?.t, mainRefresh, temps)
                 .forEach { appendLine("- $it") }
             appendLine()
             appendLine("== Per minute ==")
@@ -209,6 +209,8 @@ class SessionRecorder(
         gameHz: Float,
         delMedian: Float?,
         delP95: Float?,
+        delMax: Float?,
+        burstAt: Int?,
         gaps: Int,
         stutterSec: Int,
         totalSec: Int,
@@ -218,7 +220,7 @@ class SessionRecorder(
         temps: List<Float>,
     ): List<String> = buildList {
         if (gameHz >= avgHz * 0.8f) {
-            add("Boost worked: an app asking for normal game rate got ${gameHz.toInt()} Hz (full speed) the whole session.")
+            add("With boost on, an app asking for normal game rate got ${gameHz.toInt()} Hz (full speed). Run Boost check to see what it gets without boost.")
         } else {
             add("Game-rate apps only got ${gameHz.toInt()} Hz while boost ran at ${avgHz.toInt()} Hz: this phone gives each app its own rate, so boost can't speed up BGMI.")
         }
@@ -226,6 +228,12 @@ class SessionRecorder(
         when {
             delP95 != null && delP95 > 20f -> add("Sensor delay spiked (p95 ${delP95.toInt()} ms). That is lag you can feel; check battery saver / game mode.")
             delMedian != null && delMedian < 5f -> add("Sensor delay stayed low (${String.format(Locale.US, "%.1f", delMedian)} ms median): the gyro chip/driver is NOT the cause of lag.")
+        }
+        if (delMax != null && delMax > 200f && burstAt != null) {
+            add(
+                "At ${burstAt / 60}:${String.format(Locale.US, "%02d", burstAt % 60)} readings were held back up to ${delMax.toInt()} ms, then delivered in a burst. " +
+                    "Usually the moment you switched apps and the system paused background apps. Set this app's battery to Unrestricted.",
+            )
         }
         if (stutterSec > totalSec / 20) add("$stutterSec of $totalSec seconds had gyro stutter. See 'Worst seconds' for when.")
         else if (gaps == 0) add("No dropouts: the gyro stream was perfectly steady.")
