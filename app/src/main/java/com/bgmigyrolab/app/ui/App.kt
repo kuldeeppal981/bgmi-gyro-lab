@@ -14,6 +14,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.bgmigyrolab.app.LabViewModel
 import com.bgmigyrolab.app.Screen
 import com.bgmigyrolab.app.boost.GyroBoostService
+import com.bgmigyrolab.app.ui.screens.BoostCheckScreen
 import com.bgmigyrolab.app.ui.screens.CalibrateScreen
 import com.bgmigyrolab.app.ui.screens.DelayTestScreen
 import com.bgmigyrolab.app.ui.screens.HomeScreen
@@ -49,6 +50,7 @@ fun GyroLabApp(viewModel: LabViewModel) {
                     onOpenCalibrate = { viewModel.navigate(Screen.Calibrate) },
                     onOpenTrainer = { viewModel.navigate(Screen.Trainer) },
                     onOpenTips = { viewModel.navigate(Screen.Tips) },
+                    onOpenBoostCheck = { viewModel.navigate(Screen.BoostCheck) },
                 )
                 Screen.DelayTest -> DelayTestScreen(
                     state = state,
@@ -74,6 +76,11 @@ fun GyroLabApp(viewModel: LabViewModel) {
                     onStart = viewModel::startTrainer,
                     onStop = viewModel::stopTrainer,
                     onSize = viewModel::setCanvasSize,
+                )
+                Screen.BoostCheck -> BoostCheckScreen(
+                    state = state,
+                    onBack = { viewModel.navigate(Screen.Home) },
+                    onStart = viewModel::startBoostCheck,
                 )
                 Screen.Tips -> TipsScreen(
                     calibration = state.calibration,

@@ -27,6 +27,7 @@ fun HomeScreen(
     onOpenCalibrate: () -> Unit,
     onOpenTrainer: () -> Unit,
     onOpenTips: () -> Unit,
+    onOpenBoostCheck: () -> Unit,
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -68,6 +69,14 @@ fun HomeScreen(
                         "can't beat the chip's own limit. Uses a little extra battery.",
                     action = if (boostOn) "Stop boost" else "Start boost",
                     onClick = onToggleBoost,
+                )
+            }
+            item {
+                ActionCard(
+                    title = "Boost check",
+                    body = "8 seconds. Measures the gyro rate a game gets with and without Boost, so you know if Boost really helps BGMI on this phone.",
+                    action = "Run boost check",
+                    onClick = onOpenBoostCheck,
                 )
             }
         }

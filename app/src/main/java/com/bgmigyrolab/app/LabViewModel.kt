@@ -1,9 +1,11 @@
 package com.bgmigyrolab.app
 
 import android.app.Application
+import android.hardware.SensorManager
 import android.os.SystemClock
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.bgmigyrolab.app.boost.GyroBoostService
 import com.bgmigyrolab.app.data.Calibration
 import com.bgmigyrolab.app.data.CalibrationStore
 import com.bgmigyrolab.app.gyro.AimIntegrator
@@ -12,6 +14,8 @@ import com.bgmigyrolab.app.gyro.DelayGrade
 import com.bgmigyrolab.app.gyro.DelayReport
 import com.bgmigyrolab.app.gyro.GyroRepository
 import com.bgmigyrolab.app.gyro.GyroSample
+import com.bgmigyrolab.app.gyro.RateProbe
+import com.bgmigyrolab.app.gyro.RateResult
 import com.bgmigyrolab.app.gyro.hypot2
 import com.bgmigyrolab.app.gyro.hypot3
 import kotlin.math.abs
@@ -34,6 +38,7 @@ enum class Screen {
     Calibrate,
     Trainer,
     Tips,
+    BoostCheck,
 }
 
 enum class DelayPhase {
@@ -82,6 +87,11 @@ data class UiState(
     val lastOvershootPx: Float? = null,
     val holdStillScorePx: Float? = null,
     val trackErrorPx: Float? = null,
+    val boostCheckRunning: Boolean = false,
+    val boostCheckMessage: String = "Ready.",
+    val boostCheckOff: RateResult? = null,
+    val boostCheckOn: RateResult? = null,
+    val boostCheckVerdict: String = "",
 )
 
 class LabViewModel(application: Application) : AndroidViewModel(application) {
@@ -101,6 +111,7 @@ class LabViewModel(application: Application) : AndroidViewModel(application) {
     private var delayJob: Job? = null
     private var calJob: Job? = null
     private var trainerJob: Job? = null
+    private var boostCheckJob: Job? = null
     private var motionOnsetNanos: Long? = null
     private var firstFrameNanos: Long? = null
     private var stillWindow: List<GyroSample> = emptyList()
@@ -147,9 +158,11 @@ class LabViewModel(application: Application) : AndroidViewModel(application) {
         stopTrainer()
         delayJob?.cancel()
         calJob?.cancel()
+        boostCheckJob?.cancel()
         flickArmed = false
         when (screen) {
-            Screen.Home, Screen.Tips -> gyro.stop()
+            // Boost check must not have our own fast listener open, or it would skew the result.
+            Screen.Home, Screen.Tips, Screen.BoostCheck -> gyro.stop()
             else -> {
                 gyro.start()
                 gyro.clearBuffer()
@@ -247,6 +260,67 @@ class LabViewModel(application: Application) : AndroidViewModel(application) {
                 ),
             )
         }
+    }
+
+    fun startBoostCheck() {
+        boostCheckJob?.cancel()
+        gyro.stop()
+        val app = getApplication<Application>()
+        _state.update {
+            it.copy(
+                boostCheckRunning = true,
+                boostCheckOff = null,
+                boostCheckOn = null,
+                boostCheckVerdict = "",
+                boostCheckMessage = "1/2 Measuring without boost… keep the phone still.",
+            )
+        }
+        boostCheckJob = viewModelScope.launch {
+            val wasOn = GyroBoostService.running.value
+            try {
+                if (wasOn) {
+                    GyroBoostService.stop(app)
+                    delay(500)
+                }
+                val off = RateProbe.measure(app, SensorManager.SENSOR_DELAY_GAME, PROBE_MS)
+                _state.update { it.copy(boostCheckMessage = "2/2 Measuring with boost…") }
+                GyroBoostService.start(app)
+                var waited = 0
+                while (!GyroBoostService.running.value && waited < 3000) {
+                    delay(100)
+                    waited += 100
+                }
+                delay(500)
+                val on = RateProbe.measure(app, SensorManager.SENSOR_DELAY_GAME, PROBE_MS)
+                if (off == null || on == null) {
+                    _state.update { it.copy(boostCheckMessage = "No gyroscope found.") }
+                    return@launch
+                }
+                _state.update {
+                    it.copy(
+                        boostCheckMessage = "Done.",
+                        boostCheckOff = off,
+                        boostCheckOn = on,
+                        boostCheckVerdict = boostVerdict(off, on),
+                    )
+                }
+            } finally {
+                if (!wasOn) GyroBoostService.stop(app)
+                _state.update { it.copy(boostCheckRunning = false) }
+            }
+        }
+    }
+
+    private fun boostVerdict(off: RateResult, on: RateResult): String = when {
+        on.hz > off.hz * 1.5f ->
+            "Boost WORKS on your phone: games asking for normal rate get ${off.hz.toInt()} Hz, " +
+                "with Boost they get ${on.hz.toInt()} Hz. Keep Boost on while playing BGMI."
+        off.hz >= 300f ->
+            "Your phone already gives games the full rate (${off.hz.toInt()} Hz). Boost isn't needed; " +
+                "lag in BGMI comes from the game itself (frame rate, its own smoothing) or sensitivity."
+        else ->
+            "No change (${off.hz.toInt()} → ${on.hz.toInt()} Hz): your phone gives each app its own rate, " +
+                "so Boost (and apps like Hyper Gyro) can't speed up BGMI here."
     }
 
     fun startCalibrationCapture() {
@@ -556,6 +630,7 @@ class LabViewModel(application: Application) : AndroidViewModel(application) {
         const val STILL_SECONDS = 5
         const val FLICK_SECONDS = 8
         const val CAL_SECONDS = 3
+        const val PROBE_MS = 3500L
         // ~2 °/s average noise and ~9 °/s peak: above this the hand moved, so the bias would be wrong.
         const val STILL_RESIDUAL_MAX = 0.035f
         const val STILL_PEAK_MAX = 0.16f
