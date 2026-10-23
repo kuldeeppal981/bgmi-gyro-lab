@@ -134,7 +134,9 @@ class LabViewModel(application: Application) : AndroidViewModel(application) {
         }
         viewModelScope.launch {
             gyro.vsyncNanos.collect { vsync ->
-                if (flickArmed && motionOnsetNanos != null && firstFrameNanos == null && vsync > 0) {
+                val onset = motionOnsetNanos
+                // A frame that started before the flick sample can't show it; wait for the next one.
+                if (flickArmed && onset != null && firstFrameNanos == null && vsync >= onset) {
                     firstFrameNanos = vsync
                 }
             }

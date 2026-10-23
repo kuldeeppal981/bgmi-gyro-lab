@@ -43,11 +43,12 @@ class AimIntegrator {
             var yawRate = if (cal.landscape) -wx else -wy
             var pitchRate = if (cal.landscape) -wy else -wx
 
-            // Soft deadzone on the aim axes only (roll ignored): small motion is eased in,
-            // not dropped, so micro-adjustments don't feel delayed.
+            // Deadzone on the aim axes only (roll ignored). Between 1x and 2x the deadzone the
+            // speed ramps up; above 2x it's untouched, so normal turns are never slowed down.
+            val dz = cal.deadzoneRadPerSec
             val mag = hypot(yawRate, pitchRate)
-            if (mag <= cal.deadzoneRadPerSec) return
-            val scale = (mag - cal.deadzoneRadPerSec) / mag
+            if (mag <= dz) return
+            val scale = if (mag >= 2f * dz) 1f else (mag - dz) / dz
             yawRate *= scale
             pitchRate *= scale
 

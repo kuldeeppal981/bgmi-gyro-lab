@@ -83,7 +83,7 @@ object DelayAnalyzer {
         val deliveryMedian = delivery.takeIf { it.size >= 8 }?.let { it[it.size / 2] }
         val deliveryP95 = delivery.takeIf { it.size >= 8 }?.let { it[(it.size * 95) / 100] }
 
-        val grade = gradeFor(hz, latencyMs, jitterDeg)
+        val grade = gradeFor(hz, latencyMs, jitterDeg, deliveryMedian)
         return DelayReport(
             sampleRateHz = hz,
             biasDegPerSec = biasDeg,
@@ -98,8 +98,9 @@ object DelayAnalyzer {
         )
     }
 
-    private fun gradeFor(hz: Float, latencyMs: Float?, jitterDeg: Float): DelayGrade {
-        val latency = latencyMs ?: 80f
+    private fun gradeFor(hz: Float, latencyMs: Float?, jitterDeg: Float, deliveryMedian: Float?): DelayGrade {
+        // No flick captured: estimate from sensor delay plus one 60 Hz frame instead of assuming the worst.
+        val latency = latencyMs ?: deliveryMedian?.plus(16f) ?: 80f
         return when {
             hz >= 200f && latency < 25f && jitterDeg < 1.2f -> DelayGrade.Good
             hz >= 100f && latency < 45f -> DelayGrade.Playable
@@ -117,7 +118,8 @@ object DelayAnalyzer {
     }
 
     private fun detailFor(grade: DelayGrade, latencyMs: Float?): String {
-        val lag = latencyMs?.let { "${it.toInt()} ms motion-to-display" } ?: "no flick captured"
+        val lag = latencyMs?.let { "${it.toInt()} ms motion-to-display" }
+            ?: "no flick captured, graded from sensor delay"
         return when (grade) {
             DelayGrade.Good ->
                 "Gyro is snappy ($lag). BGMI ADS should feel close to your hand."
