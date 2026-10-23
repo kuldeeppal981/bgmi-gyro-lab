@@ -28,6 +28,8 @@ fun HomeScreen(
     onOpenTrainer: () -> Unit,
     onOpenTips: () -> Unit,
     onOpenBoostCheck: () -> Unit,
+    hasSessionReport: Boolean,
+    onOpenSessionReport: () -> Unit,
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -63,12 +65,19 @@ fun HomeScreen(
         if (hasGyro) {
             item {
                 ActionCard(
-                    title = if (boostOn) "Gyro boost: ON" else "Gyro boost",
-                    body = "Holds the gyro at its max rate with batching off, in the background, until you stop it. " +
-                        "Start it, then open BGMI. Helps on phones where BGMI asks for a slower rate; " +
-                        "can't beat the chip's own limit. Uses a little extra battery.",
+                    title = if (boostOn) "Gyro boost: ON (recording)" else "Gyro boost",
+                    body = "Holds the gyro at max rate in the background and records how it behaves while you play. " +
+                        "Start it, play BGMI 5+ minutes, then Stop: you get a session report. Uses a little extra battery.",
                     action = if (boostOn) "Stop boost" else "Start boost",
                     onClick = onToggleBoost,
+                )
+            }
+            item {
+                ActionCard(
+                    title = "Session report",
+                    body = if (hasSessionReport) "See and share the report from your last boost session." else "No session yet. Start boost, play, then stop.",
+                    action = "Open session report",
+                    onClick = onOpenSessionReport,
                 )
             }
             item {

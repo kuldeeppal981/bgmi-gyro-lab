@@ -18,6 +18,7 @@ import com.bgmigyrolab.app.ui.screens.BoostCheckScreen
 import com.bgmigyrolab.app.ui.screens.CalibrateScreen
 import com.bgmigyrolab.app.ui.screens.DelayTestScreen
 import com.bgmigyrolab.app.ui.screens.HomeScreen
+import com.bgmigyrolab.app.ui.screens.SessionReportScreen
 import com.bgmigyrolab.app.ui.screens.TipsScreen
 import com.bgmigyrolab.app.ui.screens.TrainerScreen
 import com.bgmigyrolab.app.ui.theme.GyroLabTheme
@@ -26,6 +27,7 @@ import com.bgmigyrolab.app.ui.theme.GyroLabTheme
 fun GyroLabApp(viewModel: LabViewModel) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val boostOn by GyroBoostService.running.collectAsStateWithLifecycle()
+    val sessionReport by GyroBoostService.lastReport.collectAsStateWithLifecycle()
     val context = LocalContext.current
     // Boost runs even if notifications are denied; the permission only makes its Stop button visible.
     val notifPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
@@ -51,6 +53,8 @@ fun GyroLabApp(viewModel: LabViewModel) {
                     onOpenTrainer = { viewModel.navigate(Screen.Trainer) },
                     onOpenTips = { viewModel.navigate(Screen.Tips) },
                     onOpenBoostCheck = { viewModel.navigate(Screen.BoostCheck) },
+                    hasSessionReport = sessionReport != null,
+                    onOpenSessionReport = { viewModel.navigate(Screen.SessionReport) },
                 )
                 Screen.DelayTest -> DelayTestScreen(
                     state = state,
@@ -81,6 +85,10 @@ fun GyroLabApp(viewModel: LabViewModel) {
                     state = state,
                     onBack = { viewModel.navigate(Screen.Home) },
                     onStart = viewModel::startBoostCheck,
+                )
+                Screen.SessionReport -> SessionReportScreen(
+                    report = sessionReport,
+                    onBack = { viewModel.navigate(Screen.Home) },
                 )
                 Screen.Tips -> TipsScreen(
                     calibration = state.calibration,

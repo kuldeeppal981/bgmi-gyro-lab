@@ -17,6 +17,8 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.os.IBinder
 import android.os.Process
+import android.os.SystemClock
+import java.io.File
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
 import com.bgmigyrolab.app.MainActivity
@@ -34,6 +36,24 @@ class GyroBoostService : Service(), SensorEventListener {
 
     private lateinit var sensorManager: SensorManager
     private var thread: HandlerThread? = null
+    private var handler: Handler? = null
+    private var recorder: SessionRecorder? = null
+
+    // Second gyro listener at normal game rate: shows what rate a game like BGMI actually gets.
+    private val gameRateListener = object : SensorEventListener {
+        override fun onSensorChanged(event: SensorEvent) {
+            recorder?.onGameSample()
+        }
+
+        override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
+    }
+
+    private val tick = object : Runnable {
+        override fun run() {
+            recorder?.tick()
+            handler?.postDelayed(this, 1000L)
+        }
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -61,33 +81,83 @@ class GyroBoostService : Service(), SensorEventListener {
     private fun registerSensors() {
         val t = HandlerThread("gyro-boost", Process.THREAD_PRIORITY_URGENT_DISPLAY).apply { start() }
         thread = t
-        val handler = Handler(t.looper)
+        val h = Handler(t.looper)
+        handler = h
+        val gyro = sensorManager.getDefaultSensor(Sensor.TYPE_GYROSCOPE)
+        if (gyro != null) {
+            val maxHz = if (gyro.minDelay > 0) 1_000_000f / gyro.minDelay else 0f
+            recorder = SessionRecorder(applicationContext, "${gyro.vendor} ${gyro.name} • max ${maxHz.toInt()} Hz", maxHz)
+            sensorManager.registerListener(gameRateListener, gyro, SensorManager.SENSOR_DELAY_GAME, 0, h)
+        }
         // Gyro is what aim reads; accel + game rotation vector cover engines that fuse them.
         for (sensorType in BOOSTED_SENSORS) {
             val sensor = sensorManager.getDefaultSensor(sensorType) ?: continue
-            sensorManager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_FASTEST, 0, handler)
+            sensorManager.registerListener(this, sensor, SensorManager.SENSOR_DELAY_FASTEST, 0, h)
         }
+        h.postDelayed(tick, 1000L)
     }
 
-    override fun onSensorChanged(event: SensorEvent) = Unit
+    override fun onSensorChanged(event: SensorEvent) {
+        if (event.sensor.type != Sensor.TYPE_GYROSCOPE) return
+        recorder?.onFastSample(
+            event.timestamp,
+            event.values[0],
+            event.values[1],
+            event.values[2],
+            SystemClock.elapsedRealtimeNanos(),
+        )
+    }
 
     override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
 
     override fun onDestroy() {
         sensorManager.unregisterListener(this)
+        sensorManager.unregisterListener(gameRateListener)
+        handler?.removeCallbacks(tick)
         thread?.quitSafely()
         thread = null
+        handler = null
+        recorder?.let { saveReport(it) }
+        recorder = null
         _running.value = false
         super.onDestroy()
     }
 
-    private fun buildNotification(): Notification {
-        val nm = getSystemService(NotificationManager::class.java)
+    private fun saveReport(rec: SessionRecorder) {
+        // Short runs (e.g. the 8 s Boost check) aren't play sessions.
+        if (rec.durationSec < MIN_REPORT_SECONDS) return
+        val text = rec.buildReport()
+        runCatching { reportFile(this).writeText(text) }
+        _lastReport.value = text
+        val open = PendingIntent.getActivity(
+            this,
+            2,
+            Intent(this, MainActivity::class.java)
+                .putExtra(MainActivity.EXTRA_OPEN_REPORT, true)
+                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+        )
+        val n = Notification.Builder(this, ensureChannel())
+            .setSmallIcon(android.R.drawable.ic_menu_info_details)
+            .setContentTitle("Session report ready")
+            .setContentText("Tap to see how the gyro behaved while you played.")
+            .setContentIntent(open)
+            .setAutoCancel(true)
+            .build()
+        runCatching { getSystemService(NotificationManager::class.java).notify(REPORT_NOTIFICATION_ID, n) }
+    }
+
+    private fun ensureChannel(): String {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            nm.createNotificationChannel(
+            getSystemService(NotificationManager::class.java).createNotificationChannel(
                 NotificationChannel(CHANNEL_ID, "Gyro boost", NotificationManager.IMPORTANCE_LOW),
             )
         }
+        return CHANNEL_ID
+    }
+
+    private fun buildNotification(): Notification {
+        ensureChannel()
         val open = PendingIntent.getActivity(
             this,
             0,
@@ -103,7 +173,7 @@ class GyroBoostService : Service(), SensorEventListener {
         return Notification.Builder(this, CHANNEL_ID)
             .setSmallIcon(android.R.drawable.ic_menu_compass)
             .setContentTitle("Gyro boost on")
-            .setContentText("Gyro held at max rate. Open BGMI and play.")
+            .setContentText("Recording session. Play BGMI, then tap Stop for your report.")
             .setOngoing(true)
             .setContentIntent(open)
             .addAction(Notification.Action.Builder(null, "Stop", stop).build())
@@ -113,6 +183,8 @@ class GyroBoostService : Service(), SensorEventListener {
     companion object {
         private const val CHANNEL_ID = "gyro_boost"
         private const val NOTIFICATION_ID = 7
+        private const val REPORT_NOTIFICATION_ID = 8
+        private const val MIN_REPORT_SECONDS = 20
         private const val ACTION_STOP = "com.bgmigyrolab.app.STOP_BOOST"
         private val BOOSTED_SENSORS = intArrayOf(
             Sensor.TYPE_GYROSCOPE,
@@ -122,6 +194,19 @@ class GyroBoostService : Service(), SensorEventListener {
 
         private val _running = MutableStateFlow(false)
         val running: StateFlow<Boolean> = _running.asStateFlow()
+
+        private val _lastReport = MutableStateFlow<String?>(null)
+
+        /** Most recent session report; falls back to the saved file after an app restart. */
+        val lastReport: StateFlow<String?> = _lastReport.asStateFlow()
+
+        private fun reportFile(context: Context) = File(context.filesDir, "last_session_report.txt")
+
+        fun loadSavedReport(context: Context) {
+            if (_lastReport.value != null) return
+            val f = reportFile(context)
+            if (f.exists()) _lastReport.value = runCatching { f.readText() }.getOrNull()
+        }
 
         fun start(context: Context) {
             ContextCompat.startForegroundService(context, Intent(context, GyroBoostService::class.java))

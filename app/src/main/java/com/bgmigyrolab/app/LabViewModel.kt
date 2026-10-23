@@ -39,6 +39,7 @@ enum class Screen {
     Trainer,
     Tips,
     BoostCheck,
+    SessionReport,
 }
 
 enum class DelayPhase {
@@ -163,7 +164,7 @@ class LabViewModel(application: Application) : AndroidViewModel(application) {
         flickArmed = false
         when (screen) {
             // Boost check must not have our own fast listener open, or it would skew the result.
-            Screen.Home, Screen.Tips, Screen.BoostCheck -> gyro.stop()
+            Screen.Home, Screen.Tips, Screen.BoostCheck, Screen.SessionReport -> gyro.stop()
             else -> {
                 gyro.start()
                 gyro.clearBuffer()
