@@ -124,8 +124,14 @@ class SessionRecorder(
 
     fun buildReport(): String {
         val rows = synchronized(lock) { seconds.toList() }
-        // Drop the first and last second: they're partial buckets.
-        val s = if (rows.size > 4) rows.subList(1, rows.size - 1) else rows
+        // Switching between this app and the game stalls sensor delivery for a moment, so ignore the
+        // first TRIM_START_S and last TRIM_END_S seconds. Short sessions only drop the partial buckets.
+        val trimmed = rows.size > TRIM_START_S + TRIM_END_S + MIN_ANALYZED_S
+        val s = when {
+            trimmed -> rows.subList(TRIM_START_S, rows.size - TRIM_END_S)
+            rows.size > 4 -> rows.subList(1, rows.size - 1)
+            else -> rows
+        }
         if (s.isEmpty()) return "Session too short to report."
 
         val medHz = s.map { it.hz }.sorted()[s.size / 2]
@@ -157,6 +163,7 @@ class SessionRecorder(
             appendLine("Phone: ${Build.MANUFACTURER} ${Build.MODEL} (Android ${Build.VERSION.RELEASE})")
             appendLine("Sensor: $sensorInfo")
             appendLine("Started: $start   Duration: ${mmss(rows.size)}")
+            if (trimmed) appendLine("Analyzed: ${mmss(TRIM_START_S)}–${mmss(rows.size - TRIM_END_S)} (first ${TRIM_START_S}s and last ${TRIM_END_S}s skipped: app switching)")
             appendLine()
             appendLine("== Gyro ==")
             appendLine("Rate (boost listener): avg ${f(avgHz, 0)} Hz, median ${f(medHz, 0)}, lowest second ${f(minHz, 0)}")
@@ -297,6 +304,9 @@ class SessionRecorder(
 
     private companion object {
         const val THERMAL_MODERATE = 2
+        const val TRIM_START_S = 10
+        const val TRIM_END_S = 4
+        const val MIN_ANALYZED_S = 10
         const val MAX_SECONDS = 4 * 60 * 60
     }
 }

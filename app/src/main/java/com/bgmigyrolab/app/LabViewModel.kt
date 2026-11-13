@@ -265,6 +265,10 @@ class LabViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun startBoostCheck() {
+        if (GyroBoostService.recording.value) {
+            _state.update { it.copy(boostCheckMessage = "Stop the recording first: the check restarts boost.") }
+            return
+        }
         boostCheckJob?.cancel()
         gyro.stop()
         val app = getApplication<Application>()

@@ -24,6 +24,8 @@ fun HomeScreen(
     lastGrade: DelayGrade?,
     boostOn: Boolean,
     onToggleBoost: () -> Unit,
+    recording: Boolean,
+    onToggleRecording: () -> Unit,
     onOpenDelay: () -> Unit,
     onOpenCalibrate: () -> Unit,
     onOpenTrainer: () -> Unit,
@@ -69,17 +71,31 @@ fun HomeScreen(
         if (hasGyro) {
             item {
                 ActionCard(
-                    title = if (boostOn) "Gyro boost: ON (recording)" else "Gyro boost",
-                    body = "Holds the gyro at max rate in the background and records how it behaves while you play. " +
-                        "Start it, play BGMI 5+ minutes, then Stop: you get a session report. Uses a little extra battery.",
+                    title = if (boostOn) "Gyro boost: ON" else "Gyro boost",
+                    body = "Holds the gyro at max rate in the background while you play. " +
+                        "It does not record anything by itself. Uses a little extra battery.",
                     action = if (boostOn) "Stop boost" else "Start boost",
                     onClick = onToggleBoost,
                 )
             }
             item {
                 ActionCard(
+                    title = if (recording) "Recording session…" else "Record a session",
+                    body = if (recording) {
+                        "Recording gyro health. Switch to BGMI, play 5+ minutes, then come back and stop. " +
+                            "The first 10 s and last 4 s are ignored so app switching doesn't skew the report."
+                    } else {
+                        "Starts a recording (and boost, if it's off). Tap Start, switch to BGMI, play, then stop here " +
+                            "or from the notification."
+                    },
+                    action = if (recording) "Stop recording" else "Start recording",
+                    onClick = onToggleRecording,
+                )
+            }
+            item {
+                ActionCard(
                     title = "Session report",
-                    body = if (hasSessionReport) "See and share the report from your last boost session." else "No session yet. Start boost, play, then stop.",
+                    body = if (hasSessionReport) "See and share the report from your last recorded session." else "No session yet. Start a recording, play, then stop.",
                     action = "Open session report",
                     onClick = onOpenSessionReport,
                 )

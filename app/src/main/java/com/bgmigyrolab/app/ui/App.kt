@@ -27,6 +27,7 @@ import com.bgmigyrolab.app.ui.theme.GyroLabTheme
 fun GyroLabApp(viewModel: LabViewModel) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val boostOn by GyroBoostService.running.collectAsStateWithLifecycle()
+    val recording by GyroBoostService.recording.collectAsStateWithLifecycle()
     val sessionReport by GyroBoostService.lastReport.collectAsStateWithLifecycle()
     val context = LocalContext.current
     // Boost runs even if notifications are denied; the permission only makes its Stop button visible.
@@ -47,6 +48,11 @@ fun GyroLabApp(viewModel: LabViewModel) {
                                 notifPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
                             else -> GyroBoostService.start(context)
                         }
+                    },
+                    recording = recording,
+                    onToggleRecording = {
+                        if (recording) GyroBoostService.stopRecording(context)
+                        else GyroBoostService.startRecording(context)
                     },
                     onOpenDelay = { viewModel.navigate(Screen.DelayTest) },
                     onOpenCalibrate = { viewModel.navigate(Screen.Calibrate) },
